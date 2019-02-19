@@ -1,0 +1,123 @@
+---
+title: "Visualising spatial data tutorial"
+author: "Eric Roseren"
+date: "2/19/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading packages for spatial data
+
+A range of R packages for spatial data can be found at <http://cran.r-project.org/web/views/Spatial.html>. 
+
+In this tutorial we will use the packages from the ‘spverse’, that use the sp package:
+*ggmap
+*rgdal
+*rgeos
+*maptools
+*tidyverse
+*tmap
+
+```{r echo=FALSE Installing-pakages}
+packages <- c("ggmap", "rgdal", "rgeos", "maptools", "dplyr", "tidyr", "tmap")
+# install.packages(x) # warning: uncommenting this may take a number of minutes)
+lapply(packages, library, character.only = TRUE) # load the required packages
+```
+
+The data used for this tutorial can be downloaded from <https://github.com/Robinlovelace/Creating-maps-in-R>. 
+```{r echo=FALSE Loading-data}
+lnd <- readOGR(dsn = "data/london_sport.shp")
+```
+
+## Exploratory Data Analysis
+
+```{r}
+head(lnd@data, n = 2)
+mean(lnd$Partic_Per)
+
+lnd$Pop_2001 <- as.numeric(as.character(lnd$Pop_2001))
+nrow(lnd);ncol(lnd)
+```
+## Plots
+
+```{r}
+plot(lnd)
+plot(lnd@data)
+```
+select rows of lnd@data where sports participation is less than 13:
+```{r}
+lnd@data[lnd$Partic_Per<13,]
+# or 
+lnd@data %>% filter(Partic_Per<13)
+```
+
+Select zones where sports participation is between 20 and 25%
+```{r}
+sel <- which(lnd$Partic_Per > 20 & lnd$Partic_Per < 25)
+plot(lnd[sel, ]) # output not shown here
+head(sel)
+
+plot(lnd, col = "lightgrey") # plot the london_sport object
+sel <- lnd$Partic_Per > 25
+plot(lnd[ sel, ], col = "turquoise", add = TRUE) # add selected zones to map
+```
+
+## Challenge
+Select all zones whose geographic centroid lies within 10 km of the geographic
+centroid of inner London.
+```{r}
+centroids <- gCentroid(lnd,byid = TRUE)
+dist.matrix <- as.data.frame(gDistance(centroids,byid = T))
+
+```
+Get centroid from polygon using the gCentroid function from rgeos`
+
+```{r}
+crnames<-as.character(lnd@data$name)
+colnames(dist.matrix)<- crnames
+rownames(dist.matrix)<- crnames
+
+dist.to.london.ind <- which(dist.matrix$`City of London`<=10000)  
+```
+## Plot of London geographic centroid area within 10km of city centre
+```{r Circle function}
+x <- centroids@coords[33,][1]
+y <- centroids@coords[33,][2]
+t=seq(0,2*pi,length=200)
+r <- 10000
+```
+
+```{r}
+t=seq(0,2*pi,length=200)
+plot(lnd, col = "lightgrey") # plot the london_sport object
+plot(lnd[ dist.to.london.ind, ], col = "turquoise", add = TRUE)
+lines(x+r*cos(t),y+r*sin(t),col='red')# adding circle of 10km
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
