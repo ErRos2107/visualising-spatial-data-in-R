@@ -71,6 +71,7 @@ centroid of inner London.
 ```{r}
 centroids <- gCentroid(lnd,byid = TRUE)
 dist.matrix <- as.data.frame(gDistance(centroids,byid = T))
+center.lnd <- gCentroid(lnd[lnd$name == "City of London",]) 
 
 ```
 Get centroid from polygon using the gCentroid function from rgeos`
@@ -93,23 +94,169 @@ r <- 10000
 ```{r}
 t=seq(0,2*pi,length=200)
 plot(lnd, col = "lightgrey") # plot the london_sport object
-plot(lnd[ dist.to.london.ind, ], col = "turquoise", add = TRUE)
+plot(lnd[ dist.to.london.ind, ], col = "turquoise",border='grey', add = TRUE)
 lines(x+r*cos(t),y+r*sin(t),col='red')# adding circle of 10km
+text(coordinates(center.lnd), "Central\nLondon")
+```
 
+## Solutions for challenge 1:
+```{r}
+plot(lnd, col = "grey")
+# find London's geographic centroid (add ", byid = T" for all)
+cent_lnd <- gCentroid(lnd[lnd$name == "City of London",]) 
+points(cent_lnd, cex = 3)
+# set 10 km buffer
+lnd_buffer <- gBuffer(spgeom = cent_lnd, width = 10000,capStyle = 'ROUND') 
+
+
+# method 1 of subsetting selects any intersecting zones
+lnd_central <- lnd[lnd_buffer,] # the selection is too big!
+# test the selection for the previous method - uncomment below
+plot(lnd_central, col = "lightblue", add = T)
+plot(lnd_buffer, add = T) # some areas just touch the buffer
+
+# method2 of subsetting selects only points within the buffer
+lnd_cents <- SpatialPoints(coordinates(lnd),
+  proj4string = CRS(proj4string(lnd))) # create spatialpoints
+sel <- lnd_cents[lnd_buffer,] # select points inside buffer
+points(sel) # show where the points are located
+lnd_central <- lnd[sel,] # select zones intersecting w. sel
+plot(lnd_central, add = T, col = "lightslateblue", 
+  border = "grey")
+plot(lnd_buffer, add = T, border = "red", lwd = 2)
+# Add text to the plot!
+text(coordinates(cent_lnd), "Central\nLondon")
 ```
 
 
+## Selecting quadrant
 
+The 4 quadrants of London and dissolved borders. Challenge 2: Recreate the plot displayed in the tutorial:
+```{r}
+# Find the centre of the london area
+easting.lnd <- coordinates(gCentroid(lnd))[[1]]
+northing.lnd <- coordinates(gCentroid(lnd))[[2]]
+```
+```{r}
+# arguments to test whether or not a coordinate is east or north of the centre
+east <- sapply(coordinates(lnd)[,1], function(x) x > easting.lnd)
+north <- sapply(coordinates(lnd)[,2], function(x) x > northing.lnd)
+west <- sapply(coordinates(lnd)[,1], function(x) x < easting.lnd)
+south <- sapply(coordinates(lnd)[,2], function(x) x < northing.lnd)
+```
+```{r}
+# test if the coordinate is east and north of the centre
+lnd$quadrant <- "unknown" # prevent NAs in result
+lnd$quadrant[east & north] <- "northeast"
+lnd$quadrant[east & south] <- "southeast"
+lnd$quadrant[west & north] <- "northwest"
+lnd$quadrant[west & south] <- "southwest"
+```
+Plot of the four quadrant:
+```{r}
+sel.NE <- which(lnd$quadrant=="northeast")
+plot(lnd[sel.NE, ]) # output not shown here
+head(sel.NE)
 
+sel.NW <- which(lnd$quadrant=="northwest")
+plot(lnd[sel.NW, ]) # output not shown here
+head(sel.NW)
 
+sel.SE <- which(lnd$quadrant=="southeast")
+plot(lnd[sel.SE, ]) # output not shown here
+head(sel.SE)
 
+sel.SW <- which(lnd$quadrant=="southwest")
+plot(lnd[sel.SW, ]) # output not shown here
+head(sel.SW)
 
+plot(lnd, col = "lightgrey") # plot the london_sport object
+plot(lnd[ sel.NE, ], col = "turquoise", add = TRUE) # add selected zones to map
+plot(lnd[ sel.NW, ], col = "yellow", add = TRUE) # add selected zones to map
+plot(lnd[ sel.SE, ], col = "purple", add = TRUE) 
+plot(lnd[ sel.SW, ], col = "red", add = TRUE) 
+llgridlines(lnd)
+```
+## Solution of the second challenge:
 
+```{r}
+plot(lnd)
+plot(lnd[east & north,], add = TRUE, col = "red" )
+llgridlines(lnd, lty= 3, side ="EN", offset = -0.5)
 
+lnd_disolved = rgeos::gUnaryUnion(spgeom = lnd, id = lnd$quadrant)
 
+qtm(lnd, fill = "quadrant") +
+  tm_shape(lnd_disolved) +
+  tm_borders(lwd = 9)
+```
 
+# Part III: Creating and manipulating spatial data
 
+```{r}
+vec <- vector(mode = "numeric", length = 3)
+df <- data.frame(x = 1:3, y = c(1/2, 2/3, 3/4))
 
+sp1 <- SpatialPoints(coords = df)
+
+EPSG <- make_EPSG() # create data frame of available EPSG codes
+EPSG[grepl("WGS 84$", EPSG$note), ] # search for WGS 84 code
+lnd84 <- spTransform(lnd, CRS("+init=epsg:4326")) # reproject
+# Save lnd84 object (we will use it in Part IV)
+saveRDS(object = lnd84, file = "data/lnd84.Rds")
+
+```
+##  Linking additional pieces of information to our polygons.
+
+```{r}
+# Create new object called "lnd" from "london_sport" shapefile
+lnd <- readOGR("data/london_sport.shp")
+plot(lnd) # plot the lnd object (not shown)
+nrow(lnd) 
+```
+
+```{r}
+# Create and look at new crime_data object
+crime_data <- read.csv("data/mps-recordedcrime-borough.csv",
+stringsAsFactors = FALSE)
+head(crime_data$CrimeType) # information about crime type
+```
+
+```{r}
+crime_data %>% filter(CrimeType=="Theft & Handling") -> crime_theft
+```
+Calculate the sum of the crime count for each district, save result
+
+```{r}
+crime_ag <- crime_theft %>% group_by(Borough) %>% summarise(crime.number = sum(CrimeCount)) 
+crime.ag <- aggregate(CrimeCount ~ Borough, FUN = sum, data = crime_theft)
+```
+```{r}
+# Compare the name column in lnd to Borough column in crime_ag to see which rows match.
+lnd$name %in% crime.ag$Borough
+# Return rows which do not match
+lnd$name[!lnd$name %in% crime_ag$Borough]
+crime_ag$Borough[!crime_ag$Borough %in% lnd$name]
+```
+Join the datasets
+```{r}
+# head(left_join(lnd@data, crime_ag)) # test it works
+lnd@data <- left_join(lnd@data, crime.ag, by = c('name' = 'Borough'))
+```
+
+Plot the rate of theft crimes in London by borough.
+
+```{r}
+qtm(lnd, "CrimeCount")
+```
+
+Optional challenges:
+
+```{r}
+library(readxl)
+rent.price <- read_xls("data/average-rent-borough.xls", sheet = 2)
+head(rent.price) # information about crime type
+```
 
 
 
